@@ -1,3 +1,11 @@
+# ST LIS2DW12 Accelerometer
+
+A `#[no_std]` platform-agnostic driver for the
+[LIS2DW12](https://www.st.com/resource/en/datasheet/lis2dw12.pdf)
+accelerometer using the [embedded-hal](https://docs.rs/embedded-hal) traits.
+
+TODO: Update the rest of this README after implementation!
+
 # embedded-rust-template
 Template repository for Embedded Rust development
 
