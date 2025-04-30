@@ -1,5 +1,5 @@
 [package]
-name = "embedded-rust-template"
+name = "lis2dw12"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -8,6 +8,8 @@ rust-version = "1.85"
 
 [dependencies]
 # dependencies for all targets
+bilge = "0.2.0"
+embedded-hal-async = "1.0.0"
 
 [target.'cfg(target_os = "none")'.dependencies]
 # dependencies for no-std targets
