@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 use bilge::prelude::*;
 
 pub const WHO_AM_I_EXPECTED: u8 = 0x44;
@@ -55,10 +54,10 @@ pub enum Reserved0 {
 #[bitsize(8)]
 #[derive(DebugBits, FromBits, PartialEq, Clone, Copy)]
 pub struct ControlReg1 {
-    // Low-power mode selection
+    /// Low-power mode selection
     pub low_power_mode: Control1LowPowerMode,
 
-    // Mode and resolution selection
+    /// Mode and resolution selection
     pub mode: Control1ModeSelect,
 
     /// Power mode / Data Rate Configuration

@@ -12,7 +12,7 @@
 
 use embedded_hal_async::i2c::I2c;
 
-mod registers;
+pub mod registers;
 pub use registers::*;
 
 /// SA0 pin logic level representation.
@@ -49,11 +49,6 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         Self { i2c, addr: sa0.into() }
     }
 
-    /// Create a new LIS2DW12 instance with address specified
-    pub fn new_with_addr(i2c: I2C, addr: u8) -> Self {
-        Self { i2c, addr }
-    }
-
     /// Create a new LIS2DW12 instance with SA0 tied to GND, resulting in an
     /// instance responding to address `0x18`.
     pub fn new_with_sa0_gnd(i2c: I2C) -> Self {
@@ -84,9 +79,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.i2c.write(self.addr, data).await
     }
 
-    /// Updates the specified register by first reading then setting or resetting specified bits
+    /// Modifies the specified register by first reading then setting or resetting specified bits
     /// If a bit is marked in both set and reset masks, then that bit will not be updated
-    pub async fn update_reg(&mut self, reg: Register, bits_to_reset: u8, bits_to_set: u8) -> Result<(), I2C::Error> {
+    pub async fn modify_reg(&mut self, reg: Register, bits_to_reset: u8, bits_to_set: u8) -> Result<(), I2C::Error> {
         // Filter masks to clear overlap bits
         let both_mask: u8 = bits_to_reset & bits_to_set;
         let reset_mask: u8 = bits_to_reset & !both_mask;
@@ -103,17 +98,17 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
     }
 
     /// Reads the device temperature with 12 bit precision
-    pub async fn temp_12bit(&mut self) -> Result<u16, I2C::Error> {
-        let mut temp: u16 = 0;
-        temp += ((self.read_reg(Register::TempOutHigh).await?) as u16) << 8;
-        temp += (self.read_reg(Register::TempOutLow).await?) as u16;
+    pub async fn temp_12bit(&mut self) -> Result<i16, I2C::Error> {
+        let mut temp: i16 = 0;
+        temp += ((self.read_reg(Register::TempOutHigh).await?) as i16) << 8;
+        temp += (self.read_reg(Register::TempOutLow).await?) as i16;
         temp >>= 4;
         Ok(temp)
     }
 
     /// Reads the device temperature with 8 bit precision
-    pub async fn temp_8bit(&mut self) -> Result<u8, I2C::Error> {
-        self.read_reg(Register::TempOut).await
+    pub async fn temp_8bit(&mut self) -> Result<i8, I2C::Error> {
+        Ok(self.read_reg(Register::TempOut).await? as i8)
     }
 
     /// Reads the device acceleration in the X axis

@@ -1,9 +1,9 @@
 [package]
 name = "lis2dw12"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
-repository = "https://github.com/OpenDevicePartnership/embedded-rust-template"
+repository = "https://github.com/OpenDevicePartnership/LIS2DW12"
 rust-version = "1.85"
 
 [dependencies]

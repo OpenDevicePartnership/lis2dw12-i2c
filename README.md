@@ -4,68 +4,40 @@ A `#[no_std]` platform-agnostic driver for the
 [LIS2DW12](https://www.st.com/resource/en/datasheet/lis2dw12.pdf)
 accelerometer using the [embedded-hal](https://docs.rs/embedded-hal) traits.
 
-TODO: Update the rest of this README after implementation!
+## I2C Address Specification
+The LIS2DW12 can take one of 2 I2C addresses depending on the connection to the SA0 pin.
+| SA0 | Addr |
+|-----|------|
+| GND | 0x18 |
+| V+  | 0x19 |
 
-# embedded-rust-template
-Template repository for Embedded Rust development
+The driver constructors require an explicit declaration of the SA0 pin state.
 
-## Customizing This Template
+## Usage
 
-### Changing the Target Architecture
+```rust,ignore
+use lis2dw12::{self, Lis2dw12, Register, registers};
 
-This template is configured for `thumbv8m.main-none-eabihf`, by default, but you can modify it for other targets (i.e. `aarch64-unknown-none`):
+// Initialize the driver with the SA0 configuration
+let mut accel = Lis2dw12::new(i2c, SA0::Gnd);
+let mut accel = Lis2dw12::new(i2c, SA0::Vplus);
+let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
+let mut accel = Lis2dw12::new_with_sa0_vplus(i2c);
 
-1. **VSCode Settings**: Update the target in `.vscode/settings.json`:
-   ```json
-   "rust-analyzer.cargo.target": "your-target-architecture"
-   ```
+// Set a desired configuration for each of the 7 control registers
+accel.write_reg(Register::Control1, registers::ControlReg1::new(
+   lis2dw12::Control1LowPowerMode::LowPower2,
+   lis2dw12::Control1ModeSelect::OnDemand,
+   lis2dw12::Control1DataRate::HiLo200Hz).into()).await?;
 
+// Read 3D accel data
+match accel.acc().await {
+   Ok((accx, accy, accz)) => {
+      defmt::info!("Accel data: X={}, Y={}, Z={}", accx, accy, accz);
+   },
+   Err(e) => {
+      defmt::error!("Unable to read accel data! {:?}", e);
+   }
+}
 
-This configuration ensures that:
-- Only the specified target architecture is analyzed, not the host platform
-- Code is checked against the no_std environment
-
-To temporarily analyze code for the host platform instead, you can remove the `rust-analyzer.cargo.target` setting.
-
-2. **GitHub Workflows**: Modify the target in two workflow files:
-   - `.github/workflows/nostd.yml`: Update the targets in the matrix:
-     ```yaml
-     matrix:
-       target: [your-target-architecture]
-     ```
-   - `.github/workflows/check.yml`: If there are any target-specific checks, update them accordingly.
-
-3. **Cargo Configuration**: If needed, you can add target-specific configuration in a `.cargo/config.toml` file.
-
-### Converting from Binary to Library
-
-To convert this project from a binary to a library:
-
-1. **Cargo.toml**: Update your project structure:
-   ```toml
-   [lib]
-   name = "your_library_name"
-   ```
-
-2. **Directory Structure**:
-   - For a library, ensure you have a `src/lib.rs` file instead of `src/main.rs`
-   - Move your code from `main.rs` to `lib.rs` and adjust as needed
-
-3. **No-std Configuration**: If you're creating a no-std library, ensure you have:
-   ```rust
-   // In lib.rs
-   #![cfg_attr(target_os = "none", no_std)]
-   // Add other attributes as needed
-   ```
-
-### Project Dependencies
-
-Update the dependencies in `Cargo.toml` based on your target platform:
-
-```toml
-[dependencies]
-# Common dependencies for all targets
-
-[target.'cfg(target_os = "none")'.dependencies]
-# Dependencies for no-std targets
 ```
