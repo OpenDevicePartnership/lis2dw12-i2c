@@ -130,9 +130,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         Ok(self.read_reg(Register::TempOut).await? as i8)
     }
 
-    /// Reads the current temperature and returns the value in degrees Celcius
-    pub async fn temp_celcius(&mut self) -> Result<f32, I2C::Error> {
-        Ok(Lis2dw12::<I2C>::convert_temp_reg_to_celcius(self.temp_12bit().await?))
+    /// Reads the current temperature and returns the value in degrees Celsius
+    pub async fn temp_celsius(&mut self) -> Result<f32, I2C::Error> {
+        Ok(Lis2dw12::<I2C>::convert_temp_reg_to_celsius(self.temp_12bit().await?))
     }
 
     /// Reads the device acceleration register in the X axis
@@ -259,9 +259,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     // -------------------------- Helper Functions --------------------------
 
-    /// Converts i16 temperature representation to degrees Celcius
+    /// Converts i16 temperature representation to degrees Celsius
     /// For use with 8bit temp register, convert to i16 and shift data to upper (MSB) byte for input
-    pub fn convert_temp_reg_to_celcius(temp_in: i16) -> f32 {
+    pub fn convert_temp_reg_to_celsius(temp_in: i16) -> f32 {
         // Convert temp int to float
         let mut temp: f32 = temp_in as f32;
 
