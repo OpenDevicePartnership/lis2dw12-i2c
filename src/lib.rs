@@ -79,6 +79,18 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.i2c.write(self.addr, data).await
     }
 
+    /// Read multiple bytes from LIS2DW12 registers
+    pub async fn read_regs(&mut self, reg: Register, read_buf: &mut [u8]) -> Result<(), I2C::Error> {
+        self.i2c.write_read(self.addr, &[reg as u8], read_buf).await?;
+        Ok(())
+    }
+
+    /// Write multiple bytes to LIS2DW12 registers
+    /// NOTE: The first byte of the write data must be the starting register address to write
+    pub async fn write_regs(&mut self, data: &[u8]) -> Result<(), I2C::Error> {
+        self.i2c.write(self.addr, data).await
+    }
+
     /// Modifies the specified register by first reading then setting or resetting specified bits
     /// If a bit is marked in both set and reset masks, then that bit will not be updated
     pub async fn modify_reg_bits(
@@ -117,10 +129,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
     /// Offset: 0 LSB = 25 deg C
     /// Scale: 16 LSB / deg C (Note: LSB bits 3..0 are unused 0, so the LSB is at bit 4)
     pub async fn temp_12bit(&mut self) -> Result<i16, I2C::Error> {
-        let mut temp: i16 = 0;
-        temp += ((self.read_reg(Register::TempOutHigh).await?) as i16) << 8;
-        temp += (self.read_reg(Register::TempOutLow).await?) as i16;
-        Ok(temp)
+        let mut temp_bytes: [u8; 2] = [0; 2];
+        self.read_regs(Register::TempOutLow, &mut temp_bytes).await?;
+        Ok(i16::from_le_bytes(temp_bytes))
     }
 
     /// Reads the device temperature with 8 bit precision
@@ -137,31 +148,34 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     /// Reads the device acceleration register in the X axis
     pub async fn acc_x(&mut self) -> Result<i16, I2C::Error> {
-        let mut accx: i16 = 0;
-        accx += ((self.read_reg(Register::XOutHigh).await?) as i16) << 8;
-        accx += (self.read_reg(Register::XOutLow).await?) as i16;
-        Ok(accx)
+        let mut accx_bytes: [u8; 2] = [0; 2];
+        self.read_regs(Register::XOutLow, &mut accx_bytes).await?;
+        Ok(i16::from_le_bytes(accx_bytes))
     }
 
     /// Reads the device acceleration register in the Y axis
     pub async fn acc_y(&mut self) -> Result<i16, I2C::Error> {
-        let mut accy: i16 = 0;
-        accy += ((self.read_reg(Register::YOutHigh).await?) as i16) << 8;
-        accy += (self.read_reg(Register::YOutLow).await?) as i16;
-        Ok(accy)
+        let mut accy_bytes: [u8; 2] = [0; 2];
+        self.read_regs(Register::YOutLow, &mut accy_bytes).await?;
+        Ok(i16::from_le_bytes(accy_bytes))
     }
 
     /// Reads the device acceleration register in the Z axis
     pub async fn acc_z(&mut self) -> Result<i16, I2C::Error> {
-        let mut accz: i16 = 0;
-        accz += ((self.read_reg(Register::ZOutHigh).await?) as i16) << 8;
-        accz += (self.read_reg(Register::ZOutLow).await?) as i16;
-        Ok(accz)
+        let mut accz_bytes: [u8; 2] = [0; 2];
+        self.read_regs(Register::ZOutLow, &mut accz_bytes).await?;
+        Ok(i16::from_le_bytes(accz_bytes))
     }
 
     /// Reads the 3D device acceleration from registers
     pub async fn acc(&mut self) -> Result<(i16, i16, i16), I2C::Error> {
-        Ok((self.acc_x().await?, self.acc_y().await?, self.acc_z().await?))
+        let mut acc_bytes: [u8; 6] = [0; 6];
+        self.read_regs(Register::XOutLow, &mut acc_bytes).await?;
+        Ok((
+            i16::from_le_bytes(acc_bytes[0..2].try_into().unwrap()),
+            i16::from_le_bytes(acc_bytes[2..4].try_into().unwrap()),
+            i16::from_le_bytes(acc_bytes[4..6].try_into().unwrap()),
+        ))
     }
 
     /// Returns the 3D device acceleration in Gs
@@ -251,8 +265,15 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     /// Returns free fall duration by stitching FF_DUR5 from WAKE_UP_DUR register onto FF register output
     pub async fn free_fall_duration(&mut self) -> Result<u8, I2C::Error> {
-        let ff_reg: FreeFallReg = self.read_reg(Register::FreeFall).await?.into();
-        let wu_reg: WakeUpDurationReg = self.read_reg(Register::WakeUpDuration).await?.into();
+        let mut regs: [u8; 2] = [0; 2];
+        self.read_regs(Register::WakeUpDuration, &mut regs).await?;
+
+        // WakeUpDuration = 0x35
+        let wu_reg: WakeUpDurationReg = regs[0].into();
+
+        // FreeFall = 0x36
+        let ff_reg: FreeFallReg = regs[1].into();
+
         let ff_dur: u8 = u8::from(ff_reg.ff_dur()) + (u8::from(wu_reg.ff_dur5()) << 5);
         Ok(ff_dur)
     }
@@ -320,12 +341,13 @@ mod tests {
     #[tokio::test]
     async fn test_ff_dur() {
         let ff_dur_expected: u8 = 0b010100;
-        let ff_reg: [u8; 1] = [0b10100101];
-        let wud_reg: [u8; 1] = [0b01011010];
-        let expectations = vec![
-            Transaction::write_read(SA0_GND_ADDR, vec![Register::FreeFall as u8], vec![ff_reg[0]]),
-            Transaction::write_read(SA0_GND_ADDR, vec![Register::WakeUpDuration as u8], vec![wud_reg[0]]),
-        ];
+        let wud_reg: u8 = 0b01011010; // Wake Up Duration: 0x35
+        let ff_reg: u8 = 0b10100101; // Free Fall: 0x36
+        let expectations = vec![Transaction::write_read(
+            SA0_GND_ADDR,
+            vec![Register::WakeUpDuration as u8],
+            vec![wud_reg, ff_reg],
+        )];
         let i2c = Mock::new(&expectations);
         let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
         let ff_dur: u8 = accel.free_fall_duration().await.unwrap();
