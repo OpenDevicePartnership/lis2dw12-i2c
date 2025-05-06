@@ -310,3 +310,29 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         acc * factor
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Lis2dw12, Register};
+    use embedded_hal_mock::eh1::i2c::{Mock, Transaction};
+    const SA0_GND_ADDR: u8 = 0x18;
+
+    #[tokio::test]
+    async fn test_ff_dur() {
+        let ff_dur_expected: u8 = 0b010100;
+        let ff_reg: [u8; 1] = [0b10100101];
+        let wud_reg: [u8; 1] = [0b01011010];
+        let expectations = vec![
+            Transaction::write_read(SA0_GND_ADDR, vec![Register::FreeFall as u8], vec![ff_reg[0]]),
+            Transaction::write_read(SA0_GND_ADDR, vec![Register::WakeUpDuration as u8], vec![wud_reg[0]]),
+        ];
+        let i2c = Mock::new(&expectations);
+        let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
+        let ff_dur: u8 = accel.free_fall_duration().await.unwrap();
+
+        // Verify the stitched value
+        assert_eq!(ff_dur, ff_dur_expected);
+
+        accel.destroy().done();
+    }
+}

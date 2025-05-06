@@ -11,6 +11,10 @@ rust-version = "1.85"
 bilge = "0.2.0"
 embedded-hal-async = "1.0.0"
 
+[dev-dependencies]
+embedded-hal-mock = { version = "0.11.1", features = ["embedded-hal-async"] }
+tokio = { version = "1.42.0", features = ["rt", "macros"] }
+
 [target.'cfg(target_os = "none")'.dependencies]
 # dependencies for no-std targets
 
