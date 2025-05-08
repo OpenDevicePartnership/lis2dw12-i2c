@@ -1,13 +1,19 @@
 [package]
-name = "embedded-rust-template"
+name = "lis2dw12"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
-repository = "https://github.com/OpenDevicePartnership/embedded-rust-template"
+repository = "https://github.com/OpenDevicePartnership/LIS2DW12"
 rust-version = "1.85"
 
 [dependencies]
 # dependencies for all targets
+bilge = "0.2.0"
+embedded-hal-async = "1.0.0"
+
+[dev-dependencies]
+embedded-hal-mock = { version = "0.11.1", features = ["embedded-hal-async"] }
+tokio = { version = "1.42.0", features = ["rt", "macros"] }
 
 [target.'cfg(target_os = "none")'.dependencies]
 # dependencies for no-std targets
