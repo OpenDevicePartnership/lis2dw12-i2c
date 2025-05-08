@@ -43,6 +43,10 @@ pub struct Lis2dw12<I2C: I2c> {
     addr: u8,
 }
 
+// Bit field masks
+const TAP_THRESHOLD_MASK: u8 = 0x1F;
+const SELF_TEST_MODE_MASK: u8 = 0b1100_0000;
+
 impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
     /// Create a new LIS2DW12 instance. Address determined by connection to SA0
     pub fn new(i2c: I2C, sa0: SA0) -> Self {
@@ -80,49 +84,46 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
     }
 
     /// Read multiple bytes from LIS2DW12 registers
-    pub async fn read_regs(&mut self, reg: Register, read_buf: &mut [u8]) -> Result<(), I2C::Error> {
+    async fn read_regs(&mut self, reg: Register, read_buf: &mut [u8]) -> Result<(), I2C::Error> {
         self.i2c.write_read(self.addr, &[reg as u8], read_buf).await?;
         Ok(())
     }
 
-    /// Write multiple bytes to LIS2DW12 registers
-    /// NOTE: The first byte of the write data must be the starting register address to write
-    pub async fn write_regs(&mut self, data: &[u8]) -> Result<(), I2C::Error> {
-        self.i2c.write(self.addr, data).await
-    }
-
     /// Modifies the specified register by first reading then setting or resetting specified bits
     /// If a bit is marked in both set and reset masks, then that bit will not be updated
+    /// Returns the previous value of the register
     pub async fn modify_reg_bits(
         &mut self,
         reg: Register,
         bits_to_reset: u8,
         bits_to_set: u8,
-    ) -> Result<(), I2C::Error> {
+    ) -> Result<u8, I2C::Error> {
         // Filter masks to clear overlap bits
         let both_mask: u8 = bits_to_reset & bits_to_set;
         let reset_mask: u8 = bits_to_reset & !both_mask;
         let set_mask: u8 = bits_to_set & !both_mask;
 
         // Read current value of that register
-        let mut current: u8 = self.read_reg(reg).await?;
+        let current: u8 = self.read_reg(reg).await?;
 
         // Update current register value with specified reset/set bits
-        current &= !reset_mask;
-        current |= set_mask;
+        let updated: u8 = (current & !reset_mask) | set_mask;
 
-        self.write_reg(reg, current).await
+        self.write_reg(reg, updated).await?;
+        Ok(current)
     }
 
     /// Modifies the specified register by first reading then replacing the masked bits with the value's bits
-    pub async fn modify_reg_field(&mut self, reg: Register, val: u8, mask: u8) -> Result<(), I2C::Error> {
+    /// Returns the previous value of the register
+    pub async fn modify_reg_field(&mut self, reg: Register, val: u8, mask: u8) -> Result<u8, I2C::Error> {
         // Read current value of that register
-        let mut current: u8 = self.read_reg(reg).await?;
+        let current: u8 = self.read_reg(reg).await?;
 
         // Update the register value with the new masked bits
-        current = (current & !mask) | (val & mask);
+        let updated: u8 = (current & !mask) | (val & mask);
 
-        self.write_reg(reg, current).await
+        self.write_reg(reg, updated).await?;
+        Ok(current)
     }
 
     /// Reads the device temperature with 12 bit precision. The LSB bits 3..0 are unused 0
@@ -213,35 +214,41 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     /// Reads the tap threshold value in the X axis from its register fields
     pub async fn tap_threshold_x(&mut self) -> Result<u8, I2C::Error> {
-        Ok(self.read_reg(Register::TapThresholdX).await? & 0x1F)
+        Ok(self.read_reg(Register::TapThresholdX).await? & TAP_THRESHOLD_MASK)
     }
 
     /// Reads the tap threshold value in the Y axis from its register fields
     pub async fn tap_threshold_y(&mut self) -> Result<u8, I2C::Error> {
-        Ok(self.read_reg(Register::TapThresholdY).await? & 0x1F)
+        Ok(self.read_reg(Register::TapThresholdY).await? & TAP_THRESHOLD_MASK)
     }
 
     /// Reads the tap threshold value in the Z axis from its register fields
     pub async fn tap_threshold_z(&mut self) -> Result<u8, I2C::Error> {
-        Ok(self.read_reg(Register::TapThresholdZ).await? & 0x1F)
+        Ok(self.read_reg(Register::TapThresholdZ).await? & TAP_THRESHOLD_MASK)
     }
 
     /// Sets the tap threshold value in the X axis
     /// Does not update the rest of the register
-    pub async fn set_tap_threshold_x(&mut self, ths: u8) -> Result<(), I2C::Error> {
-        self.modify_reg_field(Register::TapThresholdX, ths, 0x1F).await
+    /// Returns the previous value of the register
+    pub async fn set_tap_threshold_x(&mut self, ths: u8) -> Result<u8, I2C::Error> {
+        self.modify_reg_field(Register::TapThresholdX, ths, TAP_THRESHOLD_MASK)
+            .await
     }
 
     /// Sets the tap threshold value in the Y axis
     /// Does not update the rest of the register
-    pub async fn set_tap_threshold_y(&mut self, ths: u8) -> Result<(), I2C::Error> {
-        self.modify_reg_field(Register::TapThresholdY, ths, 0x1F).await
+    /// Returns the previous value of the register
+    pub async fn set_tap_threshold_y(&mut self, ths: u8) -> Result<u8, I2C::Error> {
+        self.modify_reg_field(Register::TapThresholdY, ths, TAP_THRESHOLD_MASK)
+            .await
     }
 
     /// Sets the tap threshold value in the Z axis
     /// Does not update the rest of the register
-    pub async fn set_tap_threshold_z(&mut self, ths: u8) -> Result<(), I2C::Error> {
-        self.modify_reg_field(Register::TapThresholdZ, ths, 0x1F).await
+    /// Returns the previous value of the register
+    pub async fn set_tap_threshold_z(&mut self, ths: u8) -> Result<u8, I2C::Error> {
+        self.modify_reg_field(Register::TapThresholdZ, ths, TAP_THRESHOLD_MASK)
+            .await
     }
 
     /// Reads the Status register
@@ -276,6 +283,15 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
         let ff_dur: u8 = u8::from(ff_reg.ff_dur()) + (u8::from(wu_reg.ff_dur5()) << 5);
         Ok(ff_dur)
+    }
+
+    /// Sets the Self-Test mode field in Control Register 3
+    /// Returns the previous value of the Control3 register
+    pub async fn set_self_test_mode(&mut self, self_test: Control3SelfTest) -> Result<u8, I2C::Error> {
+        // Create ControlReg3 with self test field (the others will not be modified due to the update mask)
+        let reg: u8 = ControlReg3::new(false, false, Reserved0::Res0, false, false, false, self_test).into();
+        self.modify_reg_field(Register::Control3, reg, SELF_TEST_MODE_MASK)
+            .await
     }
 
     // -------------------------- Helper Functions --------------------------
