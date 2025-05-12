@@ -303,18 +303,6 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         const TEST_STAGE_SLEEP_MS: usize = 100;
         const MAX_SAMPLE_ATTEMPTS: usize = 2 * TEST_SAMPLES * TEST_STAGE_SLEEP_MS;
 
-        let mut avg_x_pos: f32 = 0.0;
-        let mut avg_y_pos: f32 = 0.0;
-        let mut avg_z_pos: f32 = 0.0;
-
-        let mut avg_x_neg: f32 = 0.0;
-        let mut avg_y_neg: f32 = 0.0;
-        let mut avg_z_neg: f32 = 0.0;
-
-        let mut avg_x_unbiased: f32 = 0.0;
-        let mut avg_y_unbiased: f32 = 0.0;
-        let mut avg_z_unbiased: f32 = 0.0;
-
         // 1. Configure self-test settings
         // Control 1: 1600 HZ, High-Performance, 14bit resolution, LowPower1, 50 HZ
         let control1: u8 = self
@@ -381,24 +369,13 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         embassy_time::Timer::after_millis(TEST_STAGE_SLEEP_MS as u64).await;
         self.flush_samples().await?;
 
-        let mut sample: usize = 0;
-        let mut attempts: usize = 0;
-        while sample < TEST_SAMPLES && attempts < MAX_SAMPLE_ATTEMPTS {
-            if self.status().await?.drdy() {
-                let unbiased_acc: (f32, f32, f32) = self.acc_mgs().await?;
-                avg_x_unbiased += unbiased_acc.0;
-                avg_y_unbiased += unbiased_acc.1;
-                avg_z_unbiased += unbiased_acc.2;
-                sample += 1;
+        let avg_unbiased: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await?
+        {
+            Some(val) => val,
+            None => {
+                return Ok(false);
             }
-            attempts += 1;
-        }
-        if sample == 0 {
-            return Ok(false);
-        }
-        avg_x_unbiased /= TEST_SAMPLES as f32;
-        avg_y_unbiased /= TEST_SAMPLES as f32;
-        avg_z_unbiased /= TEST_SAMPLES as f32;
+        };
 
         // 3. Enable Self-Test mode, beginning with Positive Sign
         let mut _control3 = self
@@ -409,24 +386,12 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.flush_samples().await?;
 
         // 4. Record positive accelerometer samples
-        sample = 0;
-        attempts = 0;
-        while sample < TEST_SAMPLES && attempts < MAX_SAMPLE_ATTEMPTS {
-            if self.status().await?.drdy() {
-                let pos_acc: (f32, f32, f32) = self.acc_mgs().await?;
-                avg_x_pos += pos_acc.0;
-                avg_y_pos += pos_acc.1;
-                avg_z_pos += pos_acc.2;
-                sample += 1;
+        let avg_pos: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await? {
+            Some(val) => val,
+            None => {
+                return Ok(false);
             }
-            attempts += 1;
-        }
-        if sample == 0 {
-            return Ok(false);
-        }
-        avg_x_pos /= TEST_SAMPLES as f32;
-        avg_y_pos /= TEST_SAMPLES as f32;
-        avg_z_pos /= TEST_SAMPLES as f32;
+        };
 
         // 5. Set Negative Sign Self-Test
         _control3 = self
@@ -437,24 +402,12 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.flush_samples().await?;
 
         // 6. Record negative self-test accelerometer samples
-        sample = 0;
-        attempts = 0;
-        while sample < TEST_SAMPLES && attempts < MAX_SAMPLE_ATTEMPTS {
-            if self.status().await?.drdy() {
-                let neg_acc: (f32, f32, f32) = self.acc_mgs().await?;
-                avg_x_neg += neg_acc.0;
-                avg_y_neg += neg_acc.1;
-                avg_z_neg += neg_acc.2;
-                sample += 1;
+        let avg_neg: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await? {
+            Some(val) => val,
+            None => {
+                return Ok(false);
             }
-            attempts += 1;
-        }
-        if sample == 0 {
-            return Ok(false);
-        }
-        avg_x_neg /= TEST_SAMPLES as f32;
-        avg_y_neg /= TEST_SAMPLES as f32;
-        avg_z_neg /= TEST_SAMPLES as f32;
+        };
 
         // 7. Reset the changed accelerometer registers to their previous setting
         self.write_reg(Register::Control1, control1).await?;
@@ -464,12 +417,12 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
         // 8. Compare differences to expected values
         // Average across test samples
-        let pos_dif_x: f32 = avg_x_pos - avg_x_unbiased;
-        let pos_dif_y: f32 = avg_y_pos - avg_y_unbiased;
-        let pos_dif_z: f32 = avg_z_pos - avg_z_unbiased;
-        let neg_dif_x: f32 = avg_x_unbiased - avg_x_neg;
-        let neg_dif_y: f32 = avg_y_unbiased - avg_y_neg;
-        let neg_dif_z: f32 = avg_z_unbiased - avg_z_neg;
+        let pos_dif_x: f32 = avg_pos.0 - avg_unbiased.0;
+        let pos_dif_y: f32 = avg_pos.1 - avg_unbiased.1;
+        let pos_dif_z: f32 = avg_pos.2 - avg_unbiased.2;
+        let neg_dif_x: f32 = avg_unbiased.0 - avg_neg.0;
+        let neg_dif_y: f32 = avg_unbiased.1 - avg_neg.1;
+        let neg_dif_z: f32 = avg_unbiased.2 - avg_neg.2;
 
         // Ensure all differences line up within defined range
         let res: bool = pos_dif_x > LOW_DIFF_MGS
@@ -500,6 +453,34 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         }
 
         Ok(samples)
+    }
+
+    /// Record an average acceleration over a certain number of attempts
+    async fn record_sample_averages(
+        &mut self,
+        test_samples: usize,
+        max_attempts: usize,
+    ) -> Result<Option<(f32, f32, f32)>, I2C::Error> {
+        let mut count: usize = 0;
+        let mut attempts: usize = 0;
+        let mut avg: (f32, f32, f32) = (0.0, 0.0, 0.0);
+        while count < test_samples && attempts < max_attempts {
+            if self.status().await?.drdy() {
+                let sample: (f32, f32, f32) = self.acc_mgs().await?;
+                avg.0 += sample.0;
+                avg.1 += sample.1;
+                avg.2 += sample.2;
+                count += 1;
+            }
+            attempts += 1;
+        }
+        if count == 0 {
+            return Ok(None);
+        }
+        avg.0 /= test_samples as f32;
+        avg.1 /= test_samples as f32;
+        avg.2 /= test_samples as f32;
+        Ok(Some(avg))
     }
 
     // -------------------------- Helper Functions --------------------------
