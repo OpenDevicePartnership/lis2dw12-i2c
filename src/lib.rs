@@ -11,6 +11,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use crate::Reserved0::Res0;
+use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::i2c::I2c;
 
 pub mod registers;
@@ -39,8 +40,9 @@ impl From<SA0> for u8 {
     }
 }
 
-pub struct Lis2dw12<I2C: I2c> {
+pub struct Lis2dw12<I2C: I2c, DELAY: DelayNs> {
     i2c: I2C,
+    delay: DELAY,
     addr: u8,
 }
 
@@ -48,22 +50,26 @@ pub struct Lis2dw12<I2C: I2c> {
 const TAP_THRESHOLD_MASK: u8 = 0x1F;
 const SELF_TEST_MODE_MASK: u8 = 0b1100_0000;
 
-impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
+impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayNs> Lis2dw12<I2C, DELAY> {
     /// Create a new LIS2DW12 instance. Address determined by connection to SA0
-    pub fn new(i2c: I2C, sa0: SA0) -> Self {
-        Self { i2c, addr: sa0.into() }
+    pub fn new(i2c: I2C, delay: DELAY, sa0: SA0) -> Self {
+        Self {
+            i2c,
+            delay,
+            addr: sa0.into(),
+        }
     }
 
     /// Create a new LIS2DW12 instance with SA0 tied to GND, resulting in an
     /// instance responding to address `0x18`.
-    pub fn new_with_sa0_gnd(i2c: I2C) -> Self {
-        Self::new(i2c, SA0::Gnd)
+    pub fn new_with_sa0_gnd(i2c: I2C, delay: DELAY) -> Self {
+        Self::new(i2c, delay, SA0::Gnd)
     }
 
     /// Create a new LIS2DW12 instance with SA0 tied to V+, resulting in an
     /// instance responding to address `0x19`.
-    pub fn new_with_sa0_vplus(i2c: I2C) -> Self {
-        Self::new(i2c, SA0::Vplus)
+    pub fn new_with_sa0_vplus(i2c: I2C, delay: DELAY) -> Self {
+        Self::new(i2c, delay, SA0::Vplus)
     }
 
     /// Destroy the driver instance, return the I2C bus instance.
@@ -145,7 +151,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     /// Reads the current temperature and returns the value in degrees Celsius
     pub async fn temp_celsius(&mut self) -> Result<f32, I2C::Error> {
-        Ok(Lis2dw12::<I2C>::convert_temp_reg_to_celsius(self.temp_12bit().await?))
+        Ok(Lis2dw12::<I2C, DELAY>::convert_temp_reg_to_celsius(
+            self.temp_12bit().await?,
+        ))
     }
 
     /// Reads the device acceleration register in the X axis
@@ -185,9 +193,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_gs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_gs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_gs(accz, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accx, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accy, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accz, full_scale),
         ))
     }
 
@@ -196,9 +204,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accz, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accx, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accy, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accz, full_scale),
         ))
     }
 
@@ -207,9 +215,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accz, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accx, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accy, full_scale),
+            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accz, full_scale),
         ))
     }
 
@@ -367,7 +375,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
             .await?;
 
         // 2. Record unbiased accelerometer samples
-        embassy_time::Timer::after_millis(TEST_STAGE_SLEEP_MS as u64).await;
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
         self.flush_samples().await?;
 
         let avg_unbiased: (f32, f32, f32) = match self
@@ -385,7 +393,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
             .set_self_test_mode(registers::Control3SelfTest::PositiveSign)
             .await?;
 
-        embassy_time::Timer::after_millis(TEST_STAGE_SLEEP_MS as u64).await;
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
         self.flush_samples().await?;
 
         // 4. Record positive accelerometer samples
@@ -404,7 +412,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
             .set_self_test_mode(registers::Control3SelfTest::NegativeSign)
             .await?;
 
-        embassy_time::Timer::after_millis(TEST_STAGE_SLEEP_MS as u64).await;
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
         self.flush_samples().await?;
 
         // 6. Record negative self-test accelerometer samples
@@ -482,7 +490,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
                 avg.2 += sample.2;
                 count += 1;
             }
-            embassy_time::Timer::after_millis(sample_period_ms as u64).await;
+            self.delay.delay_ms(sample_period_ms as u32).await;
             attempts += 1;
         }
         if count == 0 {
@@ -551,6 +559,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 #[cfg(test)]
 mod tests {
     use crate::{Lis2dw12, Register};
+    use embedded_hal_mock::eh1::delay::StdSleep;
     use embedded_hal_mock::eh1::i2c::{Mock, Transaction};
     const SA0_GND_ADDR: u8 = 0x18;
 
@@ -565,7 +574,9 @@ mod tests {
             vec![wud_reg, ff_reg],
         )];
         let i2c = Mock::new(&expectations);
-        let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
+        let delay = StdSleep::new();
+        let mut accel: Lis2dw12<embedded_hal_mock::common::Generic<Transaction>, StdSleep> =
+            Lis2dw12::new_with_sa0_gnd(i2c, delay);
         let ff_dur: u8 = accel.free_fall_duration().await.unwrap();
 
         // Verify the stitched value
