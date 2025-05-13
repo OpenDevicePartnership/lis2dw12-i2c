@@ -301,10 +301,11 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         const HIGH_DIFF_MGS: f32 = 1500.0;
         const TEST_SAMPLES: usize = 5;
         const TEST_STAGE_SLEEP_MS: usize = 100;
-        const MAX_SAMPLE_ATTEMPTS: usize = 2 * TEST_SAMPLES * TEST_STAGE_SLEEP_MS;
+        const SAMPLE_DATA_PERIOD_MS: usize = 1000 / 50; // 50 Hz = 20 ms
+        const MAX_SAMPLE_ATTEMPTS: usize = 5 * TEST_SAMPLES;
 
         // 1. Configure self-test settings
-        // Control 1: 1600 HZ, High-Performance, 14bit resolution, LowPower1, 50 HZ
+        // Control 1: 50 HZ, High-Performance, 14bit resolution, LowPower1
         let control1: u8 = self
             .modify_reg_field(
                 Register::Control1,
@@ -369,7 +370,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         embassy_time::Timer::after_millis(TEST_STAGE_SLEEP_MS as u64).await;
         self.flush_samples().await?;
 
-        let avg_unbiased: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await?
+        let avg_unbiased: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
         {
             Some(val) => val,
             None => {
@@ -386,7 +389,10 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.flush_samples().await?;
 
         // 4. Record positive accelerometer samples
-        let avg_pos: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await? {
+        let avg_pos: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
+        {
             Some(val) => val,
             None => {
                 return Ok(false);
@@ -402,7 +408,10 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         self.flush_samples().await?;
 
         // 6. Record negative self-test accelerometer samples
-        let avg_neg: (f32, f32, f32) = match self.record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS).await? {
+        let avg_neg: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
+        {
             Some(val) => val,
             None => {
                 return Ok(false);
@@ -460,6 +469,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         &mut self,
         test_samples: usize,
         max_attempts: usize,
+        sample_period_ms: usize,
     ) -> Result<Option<(f32, f32, f32)>, I2C::Error> {
         let mut count: usize = 0;
         let mut attempts: usize = 0;
@@ -472,6 +482,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
                 avg.2 += sample.2;
                 count += 1;
             }
+            embassy_time::Timer::after_millis(sample_period_ms as u64).await;
             attempts += 1;
         }
         if count == 0 {
