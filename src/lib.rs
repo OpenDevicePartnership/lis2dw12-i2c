@@ -151,9 +151,7 @@ impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayN
 
     /// Reads the current temperature and returns the value in degrees Celsius
     pub async fn temp_celsius(&mut self) -> Result<f32, I2C::Error> {
-        Ok(Lis2dw12::<I2C, DELAY>::convert_temp_reg_to_celsius(
-            self.temp_12bit().await?,
-        ))
+        Ok(Self::convert_temp_reg_to_celsius(self.temp_12bit().await?))
     }
 
     /// Reads the device acceleration register in the X axis
@@ -193,9 +191,9 @@ impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayN
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accx, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accy, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_gs(accz, full_scale),
+            Self::convert_acc_to_gs(accx, full_scale),
+            Self::convert_acc_to_gs(accy, full_scale),
+            Self::convert_acc_to_gs(accz, full_scale),
         ))
     }
 
@@ -204,9 +202,9 @@ impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayN
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accx, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accy, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_mgs(accz, full_scale),
+            Self::convert_acc_to_mgs(accx, full_scale),
+            Self::convert_acc_to_mgs(accy, full_scale),
+            Self::convert_acc_to_mgs(accz, full_scale),
         ))
     }
 
@@ -215,9 +213,9 @@ impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayN
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accx, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accy, full_scale),
-            Lis2dw12::<I2C, DELAY>::convert_acc_to_ugs(accz, full_scale),
+            Self::convert_acc_to_ugs(accx, full_scale),
+            Self::convert_acc_to_ugs(accy, full_scale),
+            Self::convert_acc_to_ugs(accz, full_scale),
         ))
     }
 
