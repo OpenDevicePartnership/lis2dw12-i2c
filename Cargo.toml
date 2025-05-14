@@ -1,9 +1,16 @@
 [package]
 name = "lis2dw12-i2c"
 version = "0.1.0"
+repository = "https://github.com/OpenDevicePartnership/lis2dw12-i2c"
+authors = ["Connor Truono <connortruono@microsoft.com>"]
+description = "Platform-agnostic Rust driver for the LIS2DW12 accelerometer over I2C."
+readme = "README.md"
+keywords = ["accelerometer", "i2c", "driver", "embedded-hal-driver", "LIS2DW12"]
+categories = ["embedded", "hardware-support", "no-std"]
+documentation = "https://docs.rs/lis2dw12-i2c"
+include = ["/**/*.rs", "/Cargo.toml", "/README.md", "/LICENSE"]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/OpenDevicePartnership/lis2dw12-i2c"
 rust-version = "1.85"
 
 [dependencies]
