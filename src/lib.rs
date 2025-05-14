@@ -10,6 +10,8 @@
 
 #![cfg_attr(not(test), no_std)]
 
+use crate::Reserved0::Res0;
+use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::i2c::I2c;
 
 pub mod registers;
@@ -38,8 +40,9 @@ impl From<SA0> for u8 {
     }
 }
 
-pub struct Lis2dw12<I2C: I2c> {
+pub struct Lis2dw12<I2C: I2c, DELAY: DelayNs> {
     i2c: I2C,
+    delay: DELAY,
     addr: u8,
 }
 
@@ -47,22 +50,26 @@ pub struct Lis2dw12<I2C: I2c> {
 const TAP_THRESHOLD_MASK: u8 = 0x1F;
 const SELF_TEST_MODE_MASK: u8 = 0b1100_0000;
 
-impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
+impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayNs> Lis2dw12<I2C, DELAY> {
     /// Create a new LIS2DW12 instance. Address determined by connection to SA0
-    pub fn new(i2c: I2C, sa0: SA0) -> Self {
-        Self { i2c, addr: sa0.into() }
+    pub fn new(i2c: I2C, delay: DELAY, sa0: SA0) -> Self {
+        Self {
+            i2c,
+            delay,
+            addr: sa0.into(),
+        }
     }
 
     /// Create a new LIS2DW12 instance with SA0 tied to GND, resulting in an
     /// instance responding to address `0x18`.
-    pub fn new_with_sa0_gnd(i2c: I2C) -> Self {
-        Self::new(i2c, SA0::Gnd)
+    pub fn new_with_sa0_gnd(i2c: I2C, delay: DELAY) -> Self {
+        Self::new(i2c, delay, SA0::Gnd)
     }
 
     /// Create a new LIS2DW12 instance with SA0 tied to V+, resulting in an
     /// instance responding to address `0x19`.
-    pub fn new_with_sa0_vplus(i2c: I2C) -> Self {
-        Self::new(i2c, SA0::Vplus)
+    pub fn new_with_sa0_vplus(i2c: I2C, delay: DELAY) -> Self {
+        Self::new(i2c, delay, SA0::Vplus)
     }
 
     /// Destroy the driver instance, return the I2C bus instance.
@@ -144,7 +151,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 
     /// Reads the current temperature and returns the value in degrees Celsius
     pub async fn temp_celsius(&mut self) -> Result<f32, I2C::Error> {
-        Ok(Lis2dw12::<I2C>::convert_temp_reg_to_celsius(self.temp_12bit().await?))
+        Ok(Self::convert_temp_reg_to_celsius(self.temp_12bit().await?))
     }
 
     /// Reads the device acceleration register in the X axis
@@ -184,9 +191,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_gs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_gs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_gs(accz, full_scale),
+            Self::convert_acc_to_gs(accx, full_scale),
+            Self::convert_acc_to_gs(accy, full_scale),
+            Self::convert_acc_to_gs(accz, full_scale),
         ))
     }
 
@@ -195,9 +202,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_mgs(accz, full_scale),
+            Self::convert_acc_to_mgs(accx, full_scale),
+            Self::convert_acc_to_mgs(accy, full_scale),
+            Self::convert_acc_to_mgs(accz, full_scale),
         ))
     }
 
@@ -206,9 +213,9 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
         let full_scale = self.full_scale_range().await?;
         let (accx, accy, accz) = self.acc().await?;
         Ok((
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accx, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accy, full_scale),
-            Lis2dw12::<I2C>::convert_acc_to_ugs(accz, full_scale),
+            Self::convert_acc_to_ugs(accx, full_scale),
+            Self::convert_acc_to_ugs(accy, full_scale),
+            Self::convert_acc_to_ugs(accz, full_scale),
         ))
     }
 
@@ -289,9 +296,208 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
     /// Returns the previous value of the Control3 register
     pub async fn set_self_test_mode(&mut self, self_test: Control3SelfTest) -> Result<u8, I2C::Error> {
         // Create ControlReg3 with self test field (the others will not be modified due to the update mask)
-        let reg: u8 = ControlReg3::new(false, false, Reserved0::Res0, false, false, false, self_test).into();
+        let reg: u8 = ControlReg3::new(false, false, Res0, false, false, false, self_test).into();
         self.modify_reg_field(Register::Control3, reg, SELF_TEST_MODE_MASK)
             .await
+    }
+
+    pub async fn accel_self_test(&mut self) -> Result<bool, I2C::Error> {
+        // Self-test parameters
+        const LOW_DIFF_MGS: f32 = 70.0;
+        const HIGH_DIFF_MGS: f32 = 1500.0;
+        const TEST_SAMPLES: usize = 5;
+        const TEST_STAGE_SLEEP_MS: usize = 100;
+        const SAMPLE_DATA_PERIOD_MS: usize = 1000 / 50; // 50 Hz = 20 ms
+        const MAX_SAMPLE_ATTEMPTS: usize = 5 * TEST_SAMPLES;
+
+        // 1. Configure self-test settings
+        // Control 1: 50 HZ, High-Performance, 14bit resolution, LowPower1
+        let control1: u8 = self
+            .modify_reg_field(
+                Register::Control1,
+                ControlReg1::new(
+                    registers::Control1LowPowerMode::LowPower1,
+                    registers::Control1ModeSelect::HighPerformance,
+                    registers::Control1DataRate::HiLo50Hz,
+                )
+                .into(),
+                0xFF, // Update the entire register
+            )
+            .await?;
+
+        // Control 2: Enable Block Data Update
+        let control2: u8 = self
+            .modify_reg_field(
+                Register::Control2,
+                ControlReg2::new(
+                    false, false, false, true, // Block Data Update:
+                    false, Res0, false, false,
+                )
+                .into(),
+                0b1000,
+            )
+            .await?;
+
+        // Control 3: Single Data Conversion disabled
+        let control3: u8 = self
+            .modify_reg_field(
+                Register::Control3,
+                ControlReg3::new(
+                    false, // Single data conversion mode disabled
+                    false, // Single data conversion mode enabled by INT2 external trigger
+                    Res0,
+                    false,
+                    false,
+                    false,
+                    registers::Control3SelfTest::NormalMode, // Enabled after all controls set
+                )
+                .into(),
+                0b11, // Single data conversion mode bits
+            )
+            .await?;
+
+        // Control 6: Low noise Config Disabled, Full Scale Range 4g
+        let control6: u8 = self
+            .modify_reg_field(
+                Register::Control6,
+                ControlReg6::new(
+                    [Res0, Res0],
+                    false, // Disable low noise
+                    false,
+                    Control6FullScale::Scale4g,
+                    Control6BandwidthSelection::ODRdiv2,
+                )
+                .into(),
+                0b00110100, // Full Scale + Low Noise
+            )
+            .await?;
+
+        // 2. Record unbiased accelerometer samples
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
+        self.flush_samples().await?;
+
+        let avg_unbiased: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
+        {
+            Some(val) => val,
+            None => {
+                return Ok(false);
+            }
+        };
+
+        // 3. Enable Self-Test mode, beginning with Positive Sign
+        let mut _control3 = self
+            .set_self_test_mode(registers::Control3SelfTest::PositiveSign)
+            .await?;
+
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
+        self.flush_samples().await?;
+
+        // 4. Record positive accelerometer samples
+        let avg_pos: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
+        {
+            Some(val) => val,
+            None => {
+                return Ok(false);
+            }
+        };
+
+        // 5. Set Negative Sign Self-Test
+        _control3 = self
+            .set_self_test_mode(registers::Control3SelfTest::NegativeSign)
+            .await?;
+
+        self.delay.delay_ms(TEST_STAGE_SLEEP_MS as u32).await;
+        self.flush_samples().await?;
+
+        // 6. Record negative self-test accelerometer samples
+        let avg_neg: (f32, f32, f32) = match self
+            .record_sample_averages(TEST_SAMPLES, MAX_SAMPLE_ATTEMPTS, SAMPLE_DATA_PERIOD_MS)
+            .await?
+        {
+            Some(val) => val,
+            None => {
+                return Ok(false);
+            }
+        };
+
+        // 7. Reset the changed accelerometer registers to their previous setting
+        self.write_reg(Register::Control1, control1).await?;
+        self.write_reg(Register::Control2, control2).await?;
+        self.write_reg(Register::Control3, control3).await?;
+        self.write_reg(Register::Control6, control6).await?;
+
+        // 8. Compare differences to expected values
+        // Average across test samples
+        let pos_dif_x: f32 = avg_pos.0 - avg_unbiased.0;
+        let pos_dif_y: f32 = avg_pos.1 - avg_unbiased.1;
+        let pos_dif_z: f32 = avg_pos.2 - avg_unbiased.2;
+        let neg_dif_x: f32 = avg_unbiased.0 - avg_neg.0;
+        let neg_dif_y: f32 = avg_unbiased.1 - avg_neg.1;
+        let neg_dif_z: f32 = avg_unbiased.2 - avg_neg.2;
+
+        // Ensure all differences line up within defined range
+        let res: bool = pos_dif_x > LOW_DIFF_MGS
+            && pos_dif_x < HIGH_DIFF_MGS
+            && pos_dif_y > LOW_DIFF_MGS
+            && pos_dif_y < HIGH_DIFF_MGS
+            && pos_dif_z > LOW_DIFF_MGS
+            && pos_dif_z < HIGH_DIFF_MGS
+            && neg_dif_x > LOW_DIFF_MGS
+            && neg_dif_x < HIGH_DIFF_MGS
+            && neg_dif_y > LOW_DIFF_MGS
+            && neg_dif_y < HIGH_DIFF_MGS
+            && neg_dif_z > LOW_DIFF_MGS
+            && neg_dif_z < HIGH_DIFF_MGS;
+
+        Ok(res)
+    }
+
+    /// Flush Samples: Reads an accelerometer sample if the data is ready
+    /// For use in Block Data Update mode
+    async fn flush_samples(&mut self) -> Result<u8, I2C::Error> {
+        let mut samples: u8 = 0;
+
+        let status: StatusReg = self.status().await?;
+        if status.drdy() {
+            let _acc = self.acc().await?;
+            samples += 1;
+        }
+
+        Ok(samples)
+    }
+
+    /// Record an average acceleration over a certain number of attempts
+    async fn record_sample_averages(
+        &mut self,
+        test_samples: usize,
+        max_attempts: usize,
+        sample_period_ms: usize,
+    ) -> Result<Option<(f32, f32, f32)>, I2C::Error> {
+        let mut count: usize = 0;
+        let mut attempts: usize = 0;
+        let mut avg: (f32, f32, f32) = (0.0, 0.0, 0.0);
+        while count < test_samples && attempts < max_attempts {
+            if self.status().await?.drdy() {
+                let sample: (f32, f32, f32) = self.acc_mgs().await?;
+                avg.0 += sample.0;
+                avg.1 += sample.1;
+                avg.2 += sample.2;
+                count += 1;
+            }
+            self.delay.delay_ms(sample_period_ms as u32).await;
+            attempts += 1;
+        }
+        if count == 0 {
+            return Ok(None);
+        }
+        avg.0 /= test_samples as f32;
+        avg.1 /= test_samples as f32;
+        avg.2 /= test_samples as f32;
+        Ok(Some(avg))
     }
 
     // -------------------------- Helper Functions --------------------------
@@ -351,6 +557,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Lis2dw12<I2C> {
 #[cfg(test)]
 mod tests {
     use crate::{Lis2dw12, Register};
+    use embedded_hal_mock::eh1::delay::StdSleep;
     use embedded_hal_mock::eh1::i2c::{Mock, Transaction};
     const SA0_GND_ADDR: u8 = 0x18;
 
@@ -365,7 +572,9 @@ mod tests {
             vec![wud_reg, ff_reg],
         )];
         let i2c = Mock::new(&expectations);
-        let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
+        let delay = StdSleep::new();
+        let mut accel: Lis2dw12<embedded_hal_mock::common::Generic<Transaction>, StdSleep> =
+            Lis2dw12::new_with_sa0_gnd(i2c, delay);
         let ff_dur: u8 = accel.free_fall_duration().await.unwrap();
 
         // Verify the stitched value

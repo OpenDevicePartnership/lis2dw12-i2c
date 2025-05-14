@@ -17,12 +17,13 @@ The driver constructors require an explicit declaration of the SA0 pin state.
 
 ```rust,ignore
 use lis2dw12::{self, Lis2dw12, Register, registers};
+let delay = DelayNs;
 
 // Initialize the driver with the SA0 configuration
-let mut accel = Lis2dw12::new(i2c, SA0::Gnd);
-let mut accel = Lis2dw12::new(i2c, SA0::Vplus);
-let mut accel = Lis2dw12::new_with_sa0_gnd(i2c);
-let mut accel = Lis2dw12::new_with_sa0_vplus(i2c);
+let mut accel = Lis2dw12::new(i2c, delay, SA0::Gnd);
+let mut accel = Lis2dw12::new(i2c, delay, SA0::Vplus);
+let mut accel = Lis2dw12::new_with_sa0_gnd(i2c, delay);
+let mut accel = Lis2dw12::new_with_sa0_vplus(i2c, delay);
 
 // Set a desired configuration for each of the 7 control registers
 accel.write_reg(Register::Control1, registers::ControlReg1::new(
