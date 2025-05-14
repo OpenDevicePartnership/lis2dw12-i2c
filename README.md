@@ -16,7 +16,7 @@ The driver constructors require an explicit declaration of the SA0 pin state.
 ## Usage
 
 ```rust,ignore
-use lis2dw12::{self, Lis2dw12, Register, registers};
+use lis2dw12_i2c::{self, Lis2dw12, Register, registers};
 let delay = DelayNs;
 
 // Initialize the driver with the SA0 configuration
@@ -27,9 +27,9 @@ let mut accel = Lis2dw12::new_with_sa0_vplus(i2c, delay);
 
 // Set a desired configuration for each of the 7 control registers
 accel.write_reg(Register::Control1, registers::ControlReg1::new(
-   lis2dw12::Control1LowPowerMode::LowPower2,
-   lis2dw12::Control1ModeSelect::OnDemand,
-   lis2dw12::Control1DataRate::HiLo200Hz).into()).await?;
+   lis2dw12_i2c::Control1LowPowerMode::LowPower2,
+   lis2dw12_i2c::Control1ModeSelect::OnDemand,
+   lis2dw12_i2c::Control1DataRate::HiLo200Hz).into()).await?;
 
 // Read 3D accel data
 match accel.acc().await {
