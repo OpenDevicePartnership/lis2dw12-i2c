@@ -18,17 +18,13 @@ pub mod registers;
 pub use registers::*;
 
 /// SA0 pin logic level representation.
+#[derive(Default)]
 pub enum SA0 {
+    #[default]
     /// SA0 tied to GND (default).
     Gnd,
     /// SA0 tied to V+.
     Vplus,
-}
-
-impl Default for SA0 {
-    fn default() -> Self {
-        Self::Gnd
-    }
 }
 
 impl From<SA0> for u8 {
