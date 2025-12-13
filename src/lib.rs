@@ -180,8 +180,14 @@ impl<I2C: embedded_hal_async::i2c::I2c, DELAY: embedded_hal_async::delay::DelayN
         let mut acc_bytes: [u8; 6] = [0; 6];
         self.read_regs(Register::XOutLow, &mut acc_bytes).await?;
         Ok((
+            #[allow(clippy::unwrap_used)]
+            // panic safety: slice is always of length 2
             i16::from_le_bytes(acc_bytes[0..2].try_into().unwrap()),
+            #[allow(clippy::unwrap_used)]
+            // panic safety: slice is always of length 2
             i16::from_le_bytes(acc_bytes[2..4].try_into().unwrap()),
+            #[allow(clippy::unwrap_used)]
+            // panic safety: slice is always of length 2
             i16::from_le_bytes(acc_bytes[4..6].try_into().unwrap()),
         ))
     }
