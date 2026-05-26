@@ -1,6 +1,24 @@
 
 # cargo-vet audits file
 
+[[audits.arbitrary-int]]
+who = "Jerry Xie <jerryxie@microsoft.com>"
+criteria = "safe-to-deploy"
+version = "1.3.0"
+notes = "Full: no_std arbitrary-width integers. Unsafe limited to new_unchecked and assert_unchecked. Assisted-by: copilot-cli:claude-opus-4.6"
+
+[[audits.bilge]]
+who = "Jerry Xie <jerryxie@microsoft.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "Full: no_std bitfield facade. Unsafe trait Filled with sound blanket impl. Assisted-by: copilot-cli:claude-opus-4.6"
+
+[[audits.bilge-impl]]
+who = "Jerry Xie <jerryxie@microsoft.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "Full: proc-macro generating bitfield accessors. 3 unsafe transmute sites are sound. Assisted-by: copilot-cli:claude-opus-4.6"
+
 [[audits.embedded-hal-mock]]
 who = "Jerry Xie <jerryxie@microsoft.com>"
 criteria = "safe-to-run"
