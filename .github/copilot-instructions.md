@@ -1,5 +1,10 @@
 # Copilot Instructions
 
+> **Read `AGENTS.md` first.** This file is kept minimal on purpose;
+> `AGENTS.md` (at the repo root) is the canonical source of project
+> conventions, build commands, and agent guidance for any AI coding
+> assistant working on this repository.
+
 ## Commit Messages
 - Subject line: capitalized, 50 characters or less, imperative mood (e.g., "Fix bug" not "Fixed bug")
 - Separate subject from body with a blank line
